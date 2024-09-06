@@ -24,14 +24,53 @@ impl HttpResponse{
         let server_root_path = std::env::current_dir()?;
         let resource = request.resource.path.clone();
         let new_path = server_root_path.join(resource);
+        
+        // make a simple file server
+        let rootcwd = std::env::current_dir()?;
+        let rootcwd_len = rootcwd.canonicalize()?.components().count();
+        // handle resource’s pathing somewhere
+        let resource = rootcwd.join(&request.resource.path);
+        let resource_len = resource.canonicalize()?.components().count();
+        let file = resource.file_name().unwrap();
+
+        if rootcwd_len < resource_len {
+            status = ResponseStatus::NotFound;
+            let four_o_four = "<html>
+            <body>
+            <h1> 404 NOT FOUND </h1>
+            </body>
+            </html>";
+            content_length = four_o_four.len();
+            let content = format!("{} {}\n{}\ncontent-length: {}\r\n\r\n{}", version, status, accept_ranges, content_length, four_o_four);
+            response_body.push_str(&content);
+        }
+        else{
+            let mut begin_html = r#"
+                <!DOCTYPE html> 
+                <html> 
+                <head> 
+                    <meta charset="utf-8"> 
+                </head> 
+                <body>"#.to_string();
+
+                let mut header =
+                                format!("<h1>Currently in {}</h1>", file.to_string_lossy()).into_bytes();
+
+                let mut body = std::fs::read(&resource)?;
+
+                let mut end_html = r#"
+                </body>
+                </html>"#.to_string();
+        }
+
         if new_path.exists(){
             if new_path.is_file(){
-                let content = std::fs::read_to_string(&new_path);
-                let content = format!("{} {}\n{}\ncontent-length: {}\r\n\r\n{}", version, status, accept_ranges, content_length, content?);
-                response_body.push_str(&content);
-                content_length = response_body.len();
+                let content = std::fs::read_to_string(&new_path)?;                
+                content_length = content.len();
                 status = ResponseStatus::OK;
                 accept_ranges = AcceptRanges::Bytes;
+                let content = format!("{} {}\n{}\ncontent-length: {}\r\n\r\n{}", version, status, accept_ranges, content_length, content);
+                response_body.push_str(&content);
             }
             else {
                 let four_o_four = "<html>
